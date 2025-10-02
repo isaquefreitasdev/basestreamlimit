@@ -12,7 +12,7 @@ USER_FILE = "users.json"
 ADMIN_USER = "admin"
 ADMIN_PASS = "123456"  # ⚠️ Troque a senha de admin!
 
-st.set_page_config(page_title="Manual do Trade - Fortali", layout="centered")
+st.set_page_config(page_title="Manual do Trade Fortali", layout="centered")
 
 if not os.path.exists("pdfs"):
     os.makedirs("pdfs")
@@ -119,7 +119,6 @@ def delete_document(documento):
 def login_form():
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
-        st.markdown("<h2 style='text-align: center;'>🔒 Login de Acesso</h2>", unsafe_allow_html=True)
         with st.form("login_form"):
             username = st.text_input("Usuário")
             password = st.text_input("Senha", type="password")
@@ -134,7 +133,21 @@ def login_form():
                 else:
                     st.error("Usuário ou senha incorretos.")
 
-def logout_button_center():
+def logout_button_top_right():
+    st.markdown(
+        """
+        <style>
+        .logout-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: -20px;
+            margin-bottom: 20px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+    st.markdown('<div class="logout-container">', unsafe_allow_html=True)
     st.button(
         "Sair",
         on_click=lambda: st.session_state.update(
@@ -144,6 +157,7 @@ def logout_button_center():
             search_input_primary=""
         )
     )
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def check_permission(required_level):
     return st.session_state.user_level >= required_level
@@ -249,8 +263,53 @@ def render_admin_page():
                     save_users(st.session_state.user_db)
                     st.success(f"Usuário `{new_username}` criado com sucesso (Nível {level_map[new_level]}).")
                     st.rerun()
+
+        st.write("---")
+        # Lista de usuários existentes
+        st.markdown("#### Usuários Cadastrados")
+        for username, info in st.session_state.user_db.items():
+            cols = st.columns([2, 1, 1])
+            cols[0].write(f"**{username}** | Nível: {info['level']}")
+            if username != ADMIN_USER:
+                new_pass_input = cols[1].text_input(f"Nova senha {username}", type="password", key=f"pass_{username}")
+                if new_pass_input:
+                    if cols[1].button("Atualizar", key=f"update_{username}"):
+                        st.session_state.user_db[username]["password"] = new_pass_input
+                        save_users(st.session_state.user_db)
+                        st.success(f"Senha de '{username}' atualizada!")
+                        st.rerun()
+                if cols[2].button("❌ Remover", key=f"del_user_{username}"):
+                    st.session_state.user_db.pop(username)
+                    save_users(st.session_state.user_db)
+                    st.success(f"Usuário '{username}' removido com sucesso!")
+                    st.rerun()
     else:
         st.error("Acesso negado. Apenas Admin pode criar acessos.")
+
+# -----------------------------
+# SEÇÃO DE CHAT COM LAYOUT
+# -----------------------------
+def render_chat_lucas():
+    st.title("💬 Chat com Lucas")
+
+    if "chat_messages" not in st.session_state:
+        st.session_state.chat_messages = []
+
+    # Mostrar histórico de mensagens
+    for msg in st.session_state.chat_messages:
+        if msg["role"] == "user":
+            st.markdown(f"<div style='text-align:right; background-color:#DCF8C6; padding:8px; border-radius:10px; margin:5px 0;'>{msg['content']}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div style='text-align:left; background-color:#E5E5EA; padding:8px; border-radius:10px; margin:5px 0;'>{msg['content']}</div>", unsafe_allow_html=True)
+
+    # Entrada do usuário
+    user_input = st.text_input("Digite sua mensagem...", key="user_input")
+
+    if st.button("Enviar") and user_input.strip():
+        st.session_state.chat_messages.append({"role": "user", "content": user_input})
+        lucas_response = f"Lucas: Você disse '{user_input}'. Interessante!"
+        st.session_state.chat_messages.append({"role": "assistant", "content": lucas_response})
+        st.experimental_rerun()
 
 # -----------------------------
 # EXECUÇÃO PRINCIPAL
@@ -269,10 +328,11 @@ if not st.session_state.authenticated:
     st.info("Utilize seu usuário e senha para acessar o manual.")
     st.markdown("</div>", unsafe_allow_html=True)
 else:
-    logout_button_center()
+    logout_button_top_right()
+
     st.markdown(
         """
-        <h1 style="text-align:center; color:white; background-color:#a10d28; padding:15px; border-radius:10px; margin-top: -30px;">
+        <h1 style="text-align:center; color:white; background-color:#a10d28; padding:15px; border-radius:10px; ">
             Manual do Trade - Fortali
         </h1>
         <p style="text-align:center; font-style:italic; margin-top:10px; margin-bottom: 0px;">
@@ -282,13 +342,20 @@ else:
         unsafe_allow_html=True
     )
 
-    PAGES = ["Pesquisar Processo", "Visualizar Todos"]
+    # Sidebar de navegação
+    PAGES = {
+        "Pesquisar Processo": render_search_page,
+        "Visualizar Todos/Adicionar Novo": render_all_documents_page,
+        "Chat com Lucas": render_chat_lucas
+    }
     if check_permission(3):
-        PAGES.append("Criação de Acessos")
+        PAGES["Criação de Acessos"] = render_admin_page
 
-    tabs = st.tabs(PAGES)
+    escolha = st.sidebar.radio("📂 Navegação", list(PAGES.keys()))
+
     st.markdown("---")
 
+    # Renderização
     if st.session_state.selected_pdf:
         st.button("↩ Voltar para o Menu", on_click=select_pdf, args=[None])
         st.write("---")
@@ -312,10 +379,4 @@ else:
             st.error(f"Erro: O arquivo PDF em '{pdf_path}' não pôde ser encontrado.")
             st.session_state.selected_pdf = None
     else:
-        with tabs[0]:
-            render_search_page()
-        with tabs[1]:
-            render_all_documents_page()
-        if len(tabs) > 2:
-            with tabs[2]:
-                render_admin_page()
+        PAGES[escolha]()
